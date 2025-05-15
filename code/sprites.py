@@ -51,6 +51,9 @@ class Plane(pygame.sprite.Sprite):
         self.target_rotation = 0  # Target rotation of the plane
         self.rotation_speed = 3  # Speed at which the rotation interpolates
 
+        # mask 
+        self.mask = pygame.mask.from_surface(self.image)
+
     def update(self, dt):
         if self.is_thrusting:  # Apply thrust when the mouse is pressed
             self.apply_thrust()
@@ -65,6 +68,17 @@ class Plane(pygame.sprite.Sprite):
     def apply_gravity(self, dt):
         self.direction += self.gravity * dt
         self.pos.y += self.direction * dt
+
+        # Prevent the plane from going above the top of the screen
+        if self.pos.y < 50:
+            self.pos.y = 50
+            self.direction = 0  # Reset direction to prevent further upward movement
+
+        # Prevent the plane from falling below the bottom of the screen
+        if self.pos.y + self.rect.height > WINDOW_HEIGHT - 50:
+            self.pos.y = WINDOW_HEIGHT - self.rect.height - 50
+            self.direction = 0  # Reset direction to prevent further downward movement
+
         self.rect.y = round(self.pos.y)
 
         # Update target rotation based on the direction
@@ -86,6 +100,7 @@ class Plane(pygame.sprite.Sprite):
         # Apply the interpolated rotation to the image
         rotated_plane = pygame.transform.rotozoom(self.image, self.current_rotation, 1)
         self.image = rotated_plane
+        self.mask = pygame.mask.from_surface(self.image)
     
     def import_frames(self, scale_factor):
         self.frames = []
@@ -105,6 +120,8 @@ class Coin(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center = (coin_x_pos, coin_y_pos))
 
         self.pos = pygame.math.Vector2(self.rect.topleft)
+
+        self.mask = pygame.mask.from_surface(self.image)
 
     def update(self, dt):
         self.pos.x -= 200 * dt
