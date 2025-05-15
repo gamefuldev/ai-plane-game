@@ -1,6 +1,6 @@
 import pygame, sys, time
 from settings import *
-from sprites import BG, Plane
+from sprites import BG, Plane, Coin
 
 class Game:
     def __init__(self):
@@ -20,6 +20,10 @@ class Game:
         # sprite setup
         BG(self.all_sprites, self.scale_factor)
         self.plane = Plane(self.all_sprites, self.scale_factor / 2)
+
+        # coin timer
+        self.coin_timer = pygame.USEREVENT + 1
+        pygame.time.set_timer(self.coin_timer, 3000)
     
 
     def run(self):
@@ -39,6 +43,8 @@ class Game:
                     self.plane.set_thrust(True)
                 if event.type == pygame.MOUSEBUTTONUP:
                     self.plane.set_thrust(False)
+                if event.type == self.coin_timer:
+                    Coin(self.all_sprites, self.scale_factor / 3)
 
             # game logic
             self.display_surface.fill('black')

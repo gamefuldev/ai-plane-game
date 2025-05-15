@@ -1,5 +1,7 @@
 import pygame
 from settings import *
+from random import randint
+
 
 class BG(pygame.sprite.Sprite):
     def __init__(self, groups, scale_factor):
@@ -91,3 +93,22 @@ class Plane(pygame.sprite.Sprite):
             surface = pygame.image.load(f'./graphics/plane/red{i}.png').convert_alpha()
             scaled_surface = pygame.transform.scale(surface, pygame.math.Vector2(surface.get_size()) * scale_factor)
             self.frames.append(scaled_surface)
+
+class Coin(pygame.sprite.Sprite):
+    def __init__(self, groups, scale_factor):
+        super().__init__(groups)
+        surface = pygame.image.load('./graphics/coins/PNG/Coins/coin_32.png').convert_alpha()
+        self.image = pygame.transform.scale(surface, pygame.math.Vector2(surface.get_size()) * scale_factor)
+        
+        coin_x_pos = WINDOW_WIDTH + randint(10, 50)
+        coin_y_pos = WINDOW_HEIGHT / 2 + randint(-200, 200) 
+        self.rect = self.image.get_rect(center = (coin_x_pos, coin_y_pos))
+
+        self.pos = pygame.math.Vector2(self.rect.topleft)
+
+    def update(self, dt):
+        self.pos.x -= 200 * dt
+        self.rect.x = round(self.pos.x)
+
+        if self.rect.right <= -100:
+            self.kill()
