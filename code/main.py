@@ -19,7 +19,7 @@ class Game:
 
         # sprite setup
         BG(self.all_sprites, self.scale_factor)
-        Plane(self.all_sprites, self.scale_factor / 2)
+        self.plane = Plane(self.all_sprites, self.scale_factor / 2)
     
 
     def run(self):
@@ -35,6 +35,8 @@ class Game:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    self.plane.apply_thrust()
 
             # game logic
             self.display_surface.fill('black')

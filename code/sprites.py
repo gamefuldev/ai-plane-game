@@ -18,7 +18,7 @@ class BG(pygame.sprite.Sprite):
 
 
     def update(self, dt):
-        self.pos.x -= 30 * dt
+        self.pos.x -= 120 * dt
 
         if self.rect.centerx <= 0:
             self.pos.x = 0
@@ -36,6 +36,30 @@ class Plane(pygame.sprite.Sprite):
 
         # rect
         self.rect = self.image.get_rect(midleft = (WINDOW_WIDTH / 20, WINDOW_HEIGHT / 2))
+        self.pos = pygame.math.Vector2(self.rect.topleft)
+
+        # movement
+        self.gravity = 200
+        self.direction = 0
+
+    def update(self, dt):
+        self.apply_gravity(dt)
+        self.animate(dt)
+    
+
+    def apply_gravity(self, dt):
+        self.direction += self.gravity * dt
+        self.pos.y += self.direction * dt
+        self.rect.y = round(self.pos.y)
+
+    def apply_thrust(self):
+        self.direction = -400
+    
+    def animate(self, dt):
+        self.frame_image += 10 * dt
+        if self.frame_image >= len(self.frames):
+            self.frame_image = 0
+        self.image = self.frames[int(self.frame_image)]
     
     def import_frames(self, scale_factor):
         self.frames = []
