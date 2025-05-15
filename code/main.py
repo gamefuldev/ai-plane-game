@@ -36,7 +36,9 @@ class Game:
                     pygame.quit()
                     sys.exit()
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    self.plane.apply_thrust()
+                    self.plane.set_thrust(True)
+                if event.type == pygame.MOUSEBUTTONUP:
+                    self.plane.set_thrust(False)
 
             # game logic
             self.display_surface.fill('black')
