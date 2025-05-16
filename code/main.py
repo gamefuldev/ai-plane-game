@@ -27,7 +27,7 @@ class Game:
         pygame.time.set_timer(self.coin_timer, 3000)
     
         # text
-        self.font = pygame.font.Font('./graphics/font/Kenney Blocks.ttf', 30)
+        self.font = pygame.font.Font('./graphics/font/Kenney Pixel.ttf', 30)
         self.time_score = 0
         self.coin_score = 0
 
