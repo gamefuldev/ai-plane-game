@@ -1,3 +1,8 @@
+import threading
+import cv2
+from picamera2 import Picamera2
+from ultralytics import YOLO
+import numpy as np
 import pygame, sys, time
 from settings import *
 from sprites import BG, Plane, Coin
@@ -31,9 +36,29 @@ class Game:
         self.time_score = 0
         self.coin_score = 0
 
-        # menu
-        # self.menu_surface = pygame.image.load('')
-        # self.menu_rect = self.menu_surface.get_rect(center = (WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2))
+        # camera setup for YOLO
+        self.model = YOLO('yolo11n-pose_ncnn_model')
+        self.picam2 = Picamera2()
+        self.picam2.preview_configuration.main.size = (320, 320)
+        self.picam2.preview_configuration.main.format = "RGB888"
+        self.picam2.preview_configuration.align()
+        self.picam2.configure("preview")
+        self.picam2.start()
+        self.latest_nose_position = 0.5
+        self.pose_thread_running = True
+        self.pose_thread = threading.Thread(target=self.pose_detection_thread)
+        self.pose_thread.start()
+    
+
+    def pose_detection_thread(self):
+        while self.pose_thread_running:
+            frame = self.picam2.capture_array()
+            results = self.model.predict(frame, imgsz=320, verbose=False)
+            try:
+                keypoint = results[0].keypoints.xyn[0][0] # 0 is the nose keypoint
+                self.latest_nose_position = float(keypoint[1])
+            except Exception:
+                pass
 
 
     def collisions(self):
@@ -66,14 +91,25 @@ class Game:
             # event handlers
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    self.pose_thread_running = False
+                    self.pose_thread.join()
+                    self.picam2.stop()
                     pygame.quit()
                     sys.exit()
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    self.plane.set_thrust(True)
-                if event.type == pygame.MOUSEBUTTONUP:
-                    self.plane.set_thrust(False)
+                # if event.type == pygame.MOUSEBUTTONDOWN:
+                #     self.plane.set_thrust(True)
+                # if event.type == pygame.MOUSEBUTTONUP:
+                #     self.plane.set_thrust(False)
                 if event.type == self.coin_timer:
                     Coin([self.all_sprites, self.collision_sprites], self.scale_factor / 3)
+
+            # plane movement
+            if self.latest_nose_position < 0.5:
+                # print("Thrusting")
+                self.plane.set_thrust(True)
+            elif self.latest_nose_position > 0.5:
+                # print("Dropping")
+                self.plane.set_thrust(False)
 
             # game logic
             self.display_surface.fill('black')
