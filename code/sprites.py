@@ -5,12 +5,16 @@ from random import randint
 
 class BG(pygame.sprite.Sprite):
     def __init__(self, groups, scale_factor):
-        super().__init__(groups)
-        bg_image = self.image = pygame.image.load('./graphics/environment/background.png').convert()
+        if groups is None:
+            super().__init__()  # Initialize without adding to any groups
+        else:
+            super().__init__(groups) # Initialize and add to the specified group(s)
+        
+        bg_image = pygame.image.load('./graphics/environment/background.png').convert()
 
         full_height = bg_image.get_height() * scale_factor
         full_width = bg_image.get_width() * scale_factor
-        full_sized_image = self.image = pygame.transform.scale(bg_image, (full_width, full_height))
+        full_sized_image = pygame.transform.scale(bg_image, (full_width, full_height))
 
         self.image = pygame.Surface((full_width * 2, full_height))
         self.image.blit(full_sized_image, (0,0))
