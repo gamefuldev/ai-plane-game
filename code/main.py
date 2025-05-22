@@ -4,16 +4,16 @@ from picamera2 import Picamera2
 from ultralytics import YOLO
 import numpy as np
 import pygame, sys, time
-from enum import Enum, auto # Import Enum
+from enum import Enum, auto
 
 from settings import *
-from sprites import BG, Ground, Plane, Coin, Cloud, Pilot # Add Pilot
+from sprites import BG, Ground, Plane, Coin, Cloud, Pilot, Obstacle # Add Obstacle
 
 class GameState(Enum):
     WAITING_FOR_PLAYER = auto()
     PLAYER_IN_BOX_TIMER_ACTIVE = auto()
     PLAYING = auto()
-    GAME_OVER = auto() # New state
+    GAME_OVER = auto()
 
 class Game:
     def __init__(self):
@@ -31,8 +31,9 @@ class Game:
         self.target_box_norm = {'x_min': 0.2, 'y_min': 0.1, 'x_max': 0.8, 'y_max': 0.9}
 
         # sprite groups
-        self.all_sprites = pygame.sprite.Group() # For general game sprites like plane, coins, clouds
-        self.collision_sprites = pygame.sprite.Group()
+        self.all_sprites = pygame.sprite.Group()
+        self.coin_sprites = pygame.sprite.Group() # For coin collisions
+        self.obstacle_sprites = pygame.sprite.Group() # For obstacle collisions
 
         # scale factor
         bg_image_for_scale = pygame.image.load('./graphics/environment/background.png').convert()
@@ -40,16 +41,14 @@ class Game:
         self.scale_factor = WINDOW_WIDTH / bg_width
 
         # sprite setup
-        # MODIFICATION: Initialize BG sprite without adding it to self.all_sprites
         self.bg_sprite = BG(None, self.scale_factor) 
-        self.ground_sprite = Ground(self.all_sprites, self.scale_factor) # Ground can stay in all_sprites
         self.plane = Plane(self.all_sprites, self.scale_factor / 2)
-        # MODIFICATION: Pilot indicator is not added to all_sprites for conditional drawing
         self.pilot_indicator = Pilot(None, self.scale_factor) 
 
         # timers
         self.coin_timer = pygame.USEREVENT + 1
         self.cloud_timer = pygame.USEREVENT + 2
+        self.obstacle_timer = pygame.USEREVENT + 3 # New timer for obstacles
         
         # text
         self.font = pygame.font.Font('./graphics/font/Kenney Pixel.ttf', 30)
@@ -65,7 +64,7 @@ class Game:
 
         # Game Over Timer
         self.game_over_start_ticks = 0
-        self.game_over_display_duration = 10.0 # 10 seconds on game over screen
+        self.game_over_display_duration = 10.0
 
         # camera setup for YOLO
         self.model = YOLO('yolo11n-pose_ncnn_model')
@@ -141,9 +140,14 @@ class Game:
                 time.sleep(0.1) # Pause briefly after an error
 
 
-    def collisions(self):
-        if pygame.sprite.spritecollide(self.plane, self.collision_sprites, True, pygame.sprite.collide_mask):
-            self.coin_score += 1
+    def check_coin_collisions(self):
+        collided_coins = pygame.sprite.spritecollide(self.plane, self.coin_sprites, True, pygame.sprite.collide_mask)
+        self.coin_score += len(collided_coins)
+
+    def check_obstacle_collisions(self):
+        if pygame.sprite.spritecollide(self.plane, self.obstacle_sprites, False, pygame.sprite.collide_mask):
+            return True
+        return False
 
 
     def display_score(self):
@@ -164,14 +168,16 @@ class Game:
         self.coin_score = 0
         self.final_total_score = 0
         self.player_in_box_duration = 0.0
-        self.active = True # Will be set to False if game over, but ready for next PLAYING state
+        self.active = True 
         
-        # Clear existing coins
-        for sprite in self.collision_sprites:
-            sprite.kill() # Removes from all groups it belongs to
+        # Clear existing coins and obstacles
+        for sprite in self.coin_sprites:
+            sprite.kill() 
+        for sprite in self.obstacle_sprites:
+            sprite.kill()
 
-        # Reset plane position (optional, if you want it to start at a specific spot)
-        # self.plane.reset_position() # You'd need to implement this in the Plane class
+        # Reset plane position (optional)
+        # self.plane.reset_position() 
 
     def run(self):
         last_time = time.time()
@@ -189,80 +195,94 @@ class Game:
                     self.picam2.stop()
                     pygame.quit()
                     sys.exit()
-                if self.state == GameState.PLAYING and event.type == self.coin_timer:
-                    Coin([self.all_sprites, self.collision_sprites], self.scale_factor / 3)
-                if event.type == self.cloud_timer:
-                    Cloud(self.all_sprites, self.scale_factor / 3)
+                if self.state == GameState.PLAYING:
+                    if event.type == self.coin_timer:
+                        Coin([self.all_sprites, self.coin_sprites], self.scale_factor / 3)
+                    if event.type == self.cloud_timer: # Clouds are visual only, not added to collision groups
+                        Cloud(self.all_sprites, self.scale_factor / 3)
+                    if event.type == self.obstacle_timer:
+                        Obstacle([self.all_sprites, self.obstacle_sprites], self.scale_factor)
+
 
             # --- State Management ---
             if self.state == GameState.WAITING_FOR_PLAYER:
                 if self.all_keypoints_in_target_box:
                     self.state = GameState.PLAYER_IN_BOX_TIMER_ACTIVE
                     self.player_in_box_duration = 0.0 
+                self.plane.set_thrust(False) 
+                self.pilot_indicator.set_state(False)
             elif self.state == GameState.PLAYER_IN_BOX_TIMER_ACTIVE:
                 if self.all_keypoints_in_target_box:
                     self.player_in_box_duration += dt
                     if self.player_in_box_duration >= self.required_in_box_time:
                         self.state = GameState.PLAYING
-                        self.game_play_start_ticks = pygame.time.get_ticks() # Start game timer
+                        self.game_play_start_ticks = pygame.time.get_ticks() 
                         self.time_score = 0 
                         self.coin_score = 0 
                         pygame.time.set_timer(self.coin_timer, 3000) 
-                        pygame.time.set_timer(self.cloud_timer, 7000) # Start cloud timer (e.g., every 5 seconds)
-                        self.active = True # Ensure game is active for collisions
+                        pygame.time.set_timer(self.cloud_timer, 7000) 
+                        pygame.time.set_timer(self.obstacle_timer, 5000) # Start obstacle timer (every 5 seconds)
+                        self.active = True 
                 else: 
                     self.state = GameState.WAITING_FOR_PLAYER
                     self.player_in_box_duration = 0.0
+                self.plane.set_thrust(False) 
+                self.pilot_indicator.set_state(False)
             
             elif self.state == GameState.PLAYING:
-                # Update elapsed play time
                 current_elapsed_play_time = (pygame.time.get_ticks() - self.game_play_start_ticks) // 1000
-                self.time_score = current_elapsed_play_time # For display and final score calculation
+                self.time_score = current_elapsed_play_time 
 
+                # Plane Movement
+                is_thrusting_now = self.latest_nose_position < 0.3
+                self.plane.set_thrust(is_thrusting_now)
+                self.pilot_indicator.set_state(is_thrusting_now)
+
+                # Check for game over conditions
+                game_over_triggered = False
                 if current_elapsed_play_time >= self.game_duration_limit:
+                    game_over_triggered = True
+                
+                if self.active and self.check_obstacle_collisions(): # Check obstacle collision if game is active
+                    game_over_triggered = True
+
+                if game_over_triggered:
                     self.state = GameState.GAME_OVER
-                    self.final_total_score = self.time_score + self.coin_score # Calculate final score
-                    self.active = False # Stop collisions
-                    pygame.time.set_timer(self.coin_timer, 0) # Stop coin spawning
-                    pygame.time.set_timer(self.cloud_timer, 0) # Stop cloud spawning
+                    self.final_total_score = self.time_score + self.coin_score 
+                    self.active = False 
+                    pygame.time.set_timer(self.coin_timer, 0) 
+                    pygame.time.set_timer(self.cloud_timer, 0)
+                    pygame.time.set_timer(self.obstacle_timer, 0) # Stop obstacle timer
                     self.game_over_start_ticks = pygame.time.get_ticks() 
-                    self.plane.set_thrust(False) # Ensure plane is not thrusting on game over
-                    self.pilot_indicator.set_state(False) # Pilot stands on game over
+                    self.plane.set_thrust(False) 
+                    self.pilot_indicator.set_state(False)
                 else:
-                    # Plane Movement
-                    is_thrusting_now = self.latest_nose_position < 0.3
-                    self.plane.set_thrust(is_thrusting_now)
-                    self.pilot_indicator.set_state(is_thrusting_now) # Update pilot based on thrust
-        
+                    # Only check coin collisions if no game-ending condition met
+                    if self.active:
+                        self.check_coin_collisions()
+            
             elif self.state == GameState.GAME_OVER:
-                self.plane.set_thrust(False) # Ensure plane is not thrusting
-                self.pilot_indicator.set_state(False) # Pilot stands
+                self.plane.set_thrust(False) 
+                self.pilot_indicator.set_state(False) 
                 game_over_elapsed_time = (pygame.time.get_ticks() - self.game_over_start_ticks) / 1000.0
                 if game_over_elapsed_time >= self.game_over_display_duration:
                     self.reset_game_for_restart()
                     self.state = GameState.WAITING_FOR_PLAYER
-                    self.pilot_indicator.set_state(False) # Pilot stands on reset
-            
-            # When not PLAYING or GAME_OVER, ensure pilot is in standing state
-            elif self.state == GameState.WAITING_FOR_PLAYER or self.state == GameState.PLAYER_IN_BOX_TIMER_ACTIVE:
-                self.plane.set_thrust(False) # Plane should not thrust during setup
-                self.pilot_indicator.set_state(False)
+                    self.pilot_indicator.set_state(False)
 
 
             # --- Drawing Start ---
             self.display_surface.fill('black')
 
             # 1. Update and Draw BG sprite
-            # MODIFICATION: Only update (scroll) BG if game is PLAYING
             if self.state == GameState.PLAYING:
                 self.bg_sprite.update(dt)
             
-            # BG is always drawn, but only scrolls if PLAYING
             bg_image_to_draw = self.bg_sprite.image.copy()
             bg_image_to_draw.set_alpha(int(255 * 0.95)) 
             self.display_surface.blit(bg_image_to_draw, self.bg_sprite.rect)
 
-            # 2. Conditionally Draw Camera Feed and related UI (only during setup states)
+            # 2. Conditionally Draw Camera Feed and related UI (target box, line)
             if self.state == GameState.WAITING_FOR_PLAYER or self.state == GameState.PLAYER_IN_BOX_TIMER_ACTIVE:
                 blit_x, blit_y, scaled_width, scaled_height = 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT 
                 if self.latest_camera_frame is not None:
@@ -279,7 +299,7 @@ class Game:
                         scaled_height = int(scaled_width / cam_aspect)
                     
                     scaled_camera_frame = pygame.transform.scale(frame_surface, (scaled_width, scaled_height))
-                    scaled_camera_frame.set_alpha(int(255 * 0.30)) # Opacity for camera feed
+                    scaled_camera_frame.set_alpha(int(255 * 0.30)) 
                     
                     blit_x = (WINDOW_WIDTH - scaled_width) // 2
                     blit_y = (WINDOW_HEIGHT - scaled_height) // 2
@@ -306,7 +326,21 @@ class Game:
                     box_color = (0, 255, 0) if self.all_keypoints_in_target_box else (255, 0, 0) 
                     pygame.draw.rect(self.display_surface, box_color, target_rect_pygame, 3)
 
-            # --- UI for Different States ---
+            # 3. Update and Draw all other game sprites (plane, ground, coins, obstacles, clouds)
+            if self.state == GameState.PLAYING and self.active: 
+                self.all_sprites.update(dt)
+            self.all_sprites.draw(self.display_surface) # Draw sprites from self.all_sprites
+
+            # 3.5 Draw Pilot Indicator (conditionally, on top of other sprites if PLAYING)
+            if self.state == GameState.PLAYING:
+                self.display_surface.blit(self.pilot_indicator.image, self.pilot_indicator.rect)
+            
+            # --- Text and UI Messages (drawn last to be on top) ---
+            # 4. Display Score (only if playing)
+            if self.state == GameState.PLAYING:
+                self.display_score()
+
+            # 5. Display State-Specific Messages
             if self.state == GameState.WAITING_FOR_PLAYER:
                 msg_surf = self.status_font.render("Align your body within the box", True, (255,255,255))
                 msg_rect = msg_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT - 60))
@@ -328,24 +362,6 @@ class Game:
                 final_score_surf = self.font.render(final_score_str, True, (255,255,255))
                 final_score_rect = final_score_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 20))
                 self.display_surface.blit(final_score_surf, final_score_rect)
-            
-            # 3. Update and Draw all other game sprites
-            if self.state == GameState.PLAYING:
-                self.all_sprites.update(dt)
-            
-            self.all_sprites.draw(self.display_surface) # Draw sprites in all states (static if not PLAYING)
-
-            # 3.5 Draw Pilot Indicator (only if playing)
-            if self.state == GameState.PLAYING:
-                self.display_surface.blit(self.pilot_indicator.image, self.pilot_indicator.rect)
-            
-            # 4. Display Score (only if playing)
-            if self.state == GameState.PLAYING:
-                self.display_score()
-
-            # Collisions (only if playing and active)
-            if self.state == GameState.PLAYING and self.active: # self.active becomes False on game over
-                self.collisions()
             
             pygame.display.update()
             self.clock.tick(FRAMERATE)
