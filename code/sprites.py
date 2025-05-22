@@ -31,6 +31,34 @@ class BG(pygame.sprite.Sprite):
         
         self.rect.x = round(self.pos.x)
 
+class Ground(pygame.sprite.Sprite):
+    def __init__(self, groups, scale_factor):
+        super().__init__(groups) # Initialize and add to the specified group(s)
+        
+        ground_image = pygame.image.load('./graphics/ground/ground.png').convert_alpha()
+
+        full_height = ground_image.get_height() * scale_factor
+        full_width = ground_image.get_width() * scale_factor
+        full_sized_image = pygame.transform.scale(ground_image, (full_width, full_height))
+
+        # MODIFIED: Create the surface with per-pixel alpha
+        self.image = pygame.Surface((full_width * 2, full_height), pygame.SRCALPHA) 
+        self.image.blit(full_sized_image, (0,0))
+        self.image.blit(full_sized_image, (full_width, 0))
+        
+        self.rect = self.image.get_rect(bottomleft = (0, WINDOW_HEIGHT)) 
+        self.pos = pygame.math.Vector2(self.rect.topleft) # Use topleft for self.pos consistency
+
+
+    def update(self, dt):
+        self.pos.x -= 120 * dt # Speed of ground scroll
+
+        if self.rect.centerx <= 0: # Reset position for seamless scrolling
+            self.pos.x = 0
+        
+        self.rect.x = round(self.pos.x)
+        # self.rect.y = round(self.pos.y) # Ensure y position is also updated from self.pos if it changes
+
 class Plane(pygame.sprite.Sprite):
     def __init__(self, groups, scale_factor):
         super().__init__(groups)
@@ -129,6 +157,29 @@ class Coin(pygame.sprite.Sprite):
 
     def update(self, dt):
         self.pos.x -= 200 * dt
+        self.rect.x = round(self.pos.x)
+
+        if self.rect.right <= -100:
+            self.kill()
+
+
+class Cloud(pygame.sprite.Sprite):
+    def __init__(self, groups, scale_factor):
+        super().__init__(groups)
+        rand_cloud = randint(1, 8)
+        surface = pygame.image.load(f'./graphics/clouds/cloud{rand_cloud}.png').convert_alpha()
+        self.image = pygame.transform.scale(surface, pygame.math.Vector2(surface.get_size()) * scale_factor)
+        
+        coin_x_pos = WINDOW_WIDTH + randint(10, 50)
+        coin_y_pos = WINDOW_HEIGHT / 2 + randint(-200, 200) 
+        self.rect = self.image.get_rect(center = (coin_x_pos, coin_y_pos))
+
+        self.pos = pygame.math.Vector2(self.rect.topleft)
+
+        self.mask = pygame.mask.from_surface(self.image)
+
+    def update(self, dt):
+        self.pos.x -= 100 * dt
         self.rect.x = round(self.pos.x)
 
         if self.rect.right <= -100:
