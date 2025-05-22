@@ -163,6 +163,55 @@ class Coin(pygame.sprite.Sprite):
             self.kill()
 
 
+class Pilot(pygame.sprite.Sprite):
+    def __init__(self, groups, scale_factor):
+        if groups is None:
+            super().__init__()  # Initialize without adding to any groups
+        else:
+            super().__init__(groups) # Initialize and add to the specified group(s)
+        
+        
+        self.scale_factor = scale_factor
+
+        # Load images
+        self.stand_image_orig = pygame.image.load('./graphics/pilot/stand.png').convert_alpha()
+        self.crouch_image_orig = pygame.image.load('./graphics/pilot/crouch.png').convert_alpha()
+
+        # Scale images (adjust scale_factor as needed for pilot size)
+        pilot_scale = self.scale_factor * 2 # Example: 30% of general scale, adjust as needed
+        
+        self.stand_image = pygame.transform.scale(
+            self.stand_image_orig, 
+            (int(self.stand_image_orig.get_width() * pilot_scale), 
+             int(self.stand_image_orig.get_height() * pilot_scale))
+        )
+        self.crouch_image = pygame.transform.scale(
+            self.crouch_image_orig, 
+            (int(self.crouch_image_orig.get_width() * pilot_scale), 
+             int(self.crouch_image_orig.get_height() * pilot_scale))
+        )
+
+        # Initial state
+        self.image = self.stand_image
+        self.rect = self.image.get_rect(topright=(WINDOW_WIDTH - 20, 20)) # Position top-right with padding
+
+    def set_state(self, is_thrusting):
+        """Sets the pilot's image based on crouching (thrusting) state."""
+        if not is_thrusting:
+            if self.image != self.crouch_image:
+                self.image = self.crouch_image
+                # Update rect if image size changes, though unlikely if pre-scaled consistently
+                # old_topright = self.rect.topright
+                # self.rect = self.image.get_rect(topright=old_topright)
+        else:
+            if self.image != self.stand_image:
+                self.image = self.stand_image
+                # old_topright = self.rect.topright
+                # self.rect = self.image.get_rect(topright=old_topright)
+    
+    # No update(dt) needed if it only changes image based on external state
+
+
 class Cloud(pygame.sprite.Sprite):
     def __init__(self, groups, scale_factor):
         super().__init__(groups)

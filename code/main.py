@@ -7,7 +7,7 @@ import pygame, sys, time
 from enum import Enum, auto # Import Enum
 
 from settings import *
-from sprites import BG, Ground, Plane, Coin, Cloud
+from sprites import BG, Ground, Plane, Coin, Cloud, Pilot # Add Pilot
 
 class GameState(Enum):
     WAITING_FOR_PLAYER = auto()
@@ -44,6 +44,8 @@ class Game:
         self.bg_sprite = BG(None, self.scale_factor) 
         self.ground_sprite = Ground(self.all_sprites, self.scale_factor) # Ground can stay in all_sprites
         self.plane = Plane(self.all_sprites, self.scale_factor / 2)
+        # MODIFICATION: Pilot indicator is not added to all_sprites for conditional drawing
+        self.pilot_indicator = Pilot(None, self.scale_factor) 
 
         # timers
         self.coin_timer = pygame.USEREVENT + 1
@@ -224,19 +226,27 @@ class Game:
                     pygame.time.set_timer(self.coin_timer, 0) # Stop coin spawning
                     pygame.time.set_timer(self.cloud_timer, 0) # Stop cloud spawning
                     self.game_over_start_ticks = pygame.time.get_ticks() 
+                    self.plane.set_thrust(False) # Ensure plane is not thrusting on game over
+                    self.pilot_indicator.set_state(False) # Pilot stands on game over
                 else:
                     # Plane Movement
-                    if self.latest_nose_position < 0.3: 
-                        self.plane.set_thrust(True)
-                    elif self.latest_nose_position >= 0.3: 
-                        self.plane.set_thrust(False)
-            
+                    is_thrusting_now = self.latest_nose_position < 0.3
+                    self.plane.set_thrust(is_thrusting_now)
+                    self.pilot_indicator.set_state(is_thrusting_now) # Update pilot based on thrust
+        
             elif self.state == GameState.GAME_OVER:
                 self.plane.set_thrust(False) # Ensure plane is not thrusting
+                self.pilot_indicator.set_state(False) # Pilot stands
                 game_over_elapsed_time = (pygame.time.get_ticks() - self.game_over_start_ticks) / 1000.0
                 if game_over_elapsed_time >= self.game_over_display_duration:
                     self.reset_game_for_restart()
                     self.state = GameState.WAITING_FOR_PLAYER
+                    self.pilot_indicator.set_state(False) # Pilot stands on reset
+            
+            # When not PLAYING or GAME_OVER, ensure pilot is in standing state
+            elif self.state == GameState.WAITING_FOR_PLAYER or self.state == GameState.PLAYER_IN_BOX_TIMER_ACTIVE:
+                self.plane.set_thrust(False) # Plane should not thrust during setup
+                self.pilot_indicator.set_state(False)
 
 
             # --- Drawing Start ---
@@ -282,9 +292,9 @@ class Game:
                     current_x_line = blit_x
                     while current_x_line < blit_x + scaled_width:
                         pygame.draw.line(self.display_surface, line_color,
-                                         (current_x_line, int(line_y_threshold)),
-                                         (min(current_x_line + dash_length, blit_x + scaled_width), int(line_y_threshold)),
-                                         line_thickness)
+                                        (current_x_line, int(line_y_threshold)),
+                                        (min(current_x_line + dash_length, blit_x + scaled_width), int(line_y_threshold)),
+                                        line_thickness)
                         current_x_line += dash_length + gap_length
 
                     # Draw Target Box (already conditional on these states)
@@ -305,7 +315,7 @@ class Game:
                 remaining_time = max(0, self.required_in_box_time - self.player_in_box_duration)
                 timer_text = f"Starting in: {remaining_time:.1f}s"
                 if not self.all_keypoints_in_target_box: 
-                     timer_text = "Hold position in the box!"
+                    timer_text = "Hold position in the box!"
                 msg_surf = self.status_font.render(timer_text, True, (255,255,255))
                 msg_rect = msg_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT - 60))
                 self.display_surface.blit(msg_surf, msg_rect)
@@ -324,6 +334,10 @@ class Game:
                 self.all_sprites.update(dt)
             
             self.all_sprites.draw(self.display_surface) # Draw sprites in all states (static if not PLAYING)
+
+            # 3.5 Draw Pilot Indicator (only if playing)
+            if self.state == GameState.PLAYING:
+                self.display_surface.blit(self.pilot_indicator.image, self.pilot_indicator.rect)
             
             # 4. Display Score (only if playing)
             if self.state == GameState.PLAYING:
