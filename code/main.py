@@ -7,7 +7,8 @@ import pygame, sys, time
 from enum import Enum, auto
 
 from settings import *
-from sprites import BG, Ground, Plane, Coin, Cloud, Pilot, Obstacle # Add Obstacle
+from sprites import BG, Ground, Plane, Coin, Cloud, Pilot, Obstacle
+
 
 class GameState(Enum):
     WAITING_FOR_PLAYER = auto()
@@ -18,7 +19,10 @@ class GameState(Enum):
 class Game:
     def __init__(self):
         pygame.init()
-        self.display_surface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.FULLSCREEN)
+        # Create the actual screen at target resolution
+        self.screen = pygame.display.set_mode((TARGET_SCREEN_WIDTH, TARGET_SCREEN_HEIGHT), pygame.FULLSCREEN)
+        # Create an internal surface for rendering the game at its native resolution
+        self.display_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT)) 
         pygame.display.set_caption('AI Plane Game')
         self.clock = pygame.time.Clock()
         self.active = True 
@@ -31,17 +35,18 @@ class Game:
         self.target_box_norm = {'x_min': 0.2, 'y_min': 0.1, 'x_max': 0.8, 'y_max': 0.9}
 
         # sprite groups
-        self.all_sprites = pygame.sprite.Group()
-        self.coin_sprites = pygame.sprite.Group() # For coin collisions
-        self.obstacle_sprites = pygame.sprite.Group() # For obstacle collisions
+        self.all_sprites = pygame.sprite.LayeredUpdates() # Using LayeredUpdates for draw order
+        self.coin_sprites = pygame.sprite.Group() 
+        self.obstacle_sprites = pygame.sprite.Group() 
 
-        # scale factor
+        # scale factor (remains based on original WINDOW_WIDTH for game logic)
         bg_image_for_scale = pygame.image.load('./graphics/environment/background.png').convert()
         bg_width = bg_image_for_scale.get_width()
         self.scale_factor = WINDOW_WIDTH / bg_width
 
         # sprite setup
         self.bg_sprite = BG(None, self.scale_factor) 
+        self.ground_sprite = Ground(self.all_sprites, self.scale_factor)
         self.plane = Plane(self.all_sprites, self.scale_factor / 2)
         self.pilot_indicator = Pilot(None, self.scale_factor) 
 
@@ -198,7 +203,7 @@ class Game:
                 if self.state == GameState.PLAYING:
                     if event.type == self.coin_timer:
                         Coin([self.all_sprites, self.coin_sprites], self.scale_factor / 3)
-                    if event.type == self.cloud_timer: # Clouds are visual only, not added to collision groups
+                    if event.type == self.cloud_timer: 
                         Cloud(self.all_sprites, self.scale_factor / 3)
                     if event.type == self.obstacle_timer:
                         Obstacle([self.all_sprites, self.obstacle_sprites], self.scale_factor)
@@ -221,7 +226,7 @@ class Game:
                         self.coin_score = 0 
                         pygame.time.set_timer(self.coin_timer, 3000) 
                         pygame.time.set_timer(self.cloud_timer, 7000) 
-                        pygame.time.set_timer(self.obstacle_timer, 5000) # Start obstacle timer (every 5 seconds)
+                        pygame.time.set_timer(self.obstacle_timer, 5000) 
                         self.active = True 
                 else: 
                     self.state = GameState.WAITING_FOR_PLAYER
@@ -233,17 +238,15 @@ class Game:
                 current_elapsed_play_time = (pygame.time.get_ticks() - self.game_play_start_ticks) // 1000
                 self.time_score = current_elapsed_play_time 
 
-                # Plane Movement
                 is_thrusting_now = self.latest_nose_position < 0.3
                 self.plane.set_thrust(is_thrusting_now)
                 self.pilot_indicator.set_state(is_thrusting_now)
 
-                # Check for game over conditions
                 game_over_triggered = False
                 if current_elapsed_play_time >= self.game_duration_limit:
                     game_over_triggered = True
                 
-                if self.active and self.check_obstacle_collisions(): # Check obstacle collision if game is active
+                if self.active and self.check_obstacle_collisions(): 
                     game_over_triggered = True
 
                 if game_over_triggered:
@@ -252,12 +255,11 @@ class Game:
                     self.active = False 
                     pygame.time.set_timer(self.coin_timer, 0) 
                     pygame.time.set_timer(self.cloud_timer, 0)
-                    pygame.time.set_timer(self.obstacle_timer, 0) # Stop obstacle timer
+                    pygame.time.set_timer(self.obstacle_timer, 0) 
                     self.game_over_start_ticks = pygame.time.get_ticks() 
                     self.plane.set_thrust(False) 
                     self.pilot_indicator.set_state(False)
                 else:
-                    # Only check coin collisions if no game-ending condition met
                     if self.active:
                         self.check_coin_collisions()
             
@@ -270,25 +272,23 @@ class Game:
                     self.state = GameState.WAITING_FOR_PLAYER
                     self.pilot_indicator.set_state(False)
 
-
-            # --- Drawing Start ---
+            # --- Drawing Start (on self.display_surface) ---
             self.display_surface.fill('black')
 
             # 1. Update and Draw BG sprite
             if self.state == GameState.PLAYING:
                 self.bg_sprite.update(dt)
-            
             bg_image_to_draw = self.bg_sprite.image.copy()
             bg_image_to_draw.set_alpha(int(255 * 0.95)) 
             self.display_surface.blit(bg_image_to_draw, self.bg_sprite.rect)
 
-            # 2. Conditionally Draw Camera Feed and related UI (target box, line)
+            # 2. Conditionally Draw Camera Feed and related UI
             if self.state == GameState.WAITING_FOR_PLAYER or self.state == GameState.PLAYER_IN_BOX_TIMER_ACTIVE:
+                # ... (camera feed drawing logic remains the same, blitting to self.display_surface) ...
                 blit_x, blit_y, scaled_width, scaled_height = 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT 
                 if self.latest_camera_frame is not None:
                     cam_height, cam_width = self.latest_camera_frame.shape[0], self.latest_camera_frame.shape[1]
-                    frame_surface = pygame.image.frombuffer(self.latest_camera_frame.tobytes(),
-                                                            (cam_width, cam_height), "RGB")
+                    frame_surface = pygame.image.frombuffer(self.latest_camera_frame.tobytes(), (cam_width, cam_height), "RGB")
                     win_aspect = WINDOW_WIDTH / WINDOW_HEIGHT
                     cam_aspect = cam_width / cam_height
                     if win_aspect > cam_aspect:
@@ -297,27 +297,18 @@ class Game:
                     else:
                         scaled_width = WINDOW_WIDTH
                         scaled_height = int(scaled_width / cam_aspect)
-                    
                     scaled_camera_frame = pygame.transform.scale(frame_surface, (scaled_width, scaled_height))
                     scaled_camera_frame.set_alpha(int(255 * 0.30)) 
-                    
                     blit_x = (WINDOW_WIDTH - scaled_width) // 2
                     blit_y = (WINDOW_HEIGHT - scaled_height) // 2
                     self.display_surface.blit(scaled_camera_frame, (blit_x, blit_y))
-
-                    # Draw horizontal dotted line for thrust threshold (only with camera during setup)
                     line_y_threshold = blit_y + (0.3 * scaled_height) 
                     line_color = (255, 255, 0)
                     dash_length, gap_length, line_thickness = 5, 5, 2
                     current_x_line = blit_x
                     while current_x_line < blit_x + scaled_width:
-                        pygame.draw.line(self.display_surface, line_color,
-                                        (current_x_line, int(line_y_threshold)),
-                                        (min(current_x_line + dash_length, blit_x + scaled_width), int(line_y_threshold)),
-                                        line_thickness)
+                        pygame.draw.line(self.display_surface, line_color, (current_x_line, int(line_y_threshold)), (min(current_x_line + dash_length, blit_x + scaled_width), int(line_y_threshold)), line_thickness)
                         current_x_line += dash_length + gap_length
-
-                    # Draw Target Box (already conditional on these states)
                     rect_x_on_screen = blit_x + self.target_box_norm['x_min'] * scaled_width
                     rect_y_on_screen = blit_y + self.target_box_norm['y_min'] * scaled_height
                     rect_w_on_screen = (self.target_box_norm['x_max'] - self.target_box_norm['x_min']) * scaled_width
@@ -326,19 +317,19 @@ class Game:
                     box_color = (0, 255, 0) if self.all_keypoints_in_target_box else (255, 0, 0) 
                     pygame.draw.rect(self.display_surface, box_color, target_rect_pygame, 3)
 
-            # 3. Update and Draw all other game sprites (plane, ground, coins, obstacles, clouds)
+            # 3. Update and Draw all other game sprites
             if self.state == GameState.PLAYING and self.active: 
                 self.all_sprites.update(dt)
-            self.all_sprites.draw(self.display_surface) # Draw sprites from self.all_sprites
+            self.all_sprites.draw(self.display_surface) 
 
-            # 3.5 Draw Pilot Indicator (conditionally, on top of other sprites if PLAYING)
+            # 3.5 Draw Pilot Indicator
             if self.state == GameState.PLAYING:
                 self.display_surface.blit(self.pilot_indicator.image, self.pilot_indicator.rect)
             
-            # --- Text and UI Messages (drawn last to be on top) ---
-            # 4. Display Score (only if playing)
+            # --- Text and UI Messages (drawn last to be on top, on self.display_surface) ---
+            # 4. Display Score
             if self.state == GameState.PLAYING:
-                self.display_score()
+                self.display_score() # This method already blits to self.display_surface
 
             # 5. Display State-Specific Messages
             if self.state == GameState.WAITING_FOR_PLAYER:
@@ -354,16 +345,20 @@ class Game:
                 msg_rect = msg_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT - 60))
                 self.display_surface.blit(msg_surf, msg_rect)
             elif self.state == GameState.GAME_OVER:
-                game_over_text_surf = self.game_over_font.render("GAME OVER", True, (255, 69, 0)) # OrangeRed
+                game_over_text_surf = self.game_over_font.render("GAME OVER", True, (255, 69, 0)) 
                 game_over_text_rect = game_over_text_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 50))
                 self.display_surface.blit(game_over_text_surf, game_over_text_rect)
-
                 final_score_str = f"Final Score: {self.final_total_score}"
                 final_score_surf = self.font.render(final_score_str, True, (255,255,255))
                 final_score_rect = final_score_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 20))
                 self.display_surface.blit(final_score_surf, final_score_rect)
             
-            pygame.display.update()
+            # --- Final Scaling and Display Update ---
+            # Scale the internal display_surface to the target screen size
+            scaled_surface = pygame.transform.scale(self.display_surface, (TARGET_SCREEN_WIDTH, TARGET_SCREEN_HEIGHT))
+            self.screen.blit(scaled_surface, (0, 0)) # Blit the scaled surface to the actual screen
+
+            pygame.display.update() # Update the actual screen
             self.clock.tick(FRAMERATE)
 
 
